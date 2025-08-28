@@ -20,20 +20,20 @@ import hashlib
 import ast  # For parsing string representations of lists
 
 # Reproducibility
-SEED = 42   # Single seed for faster execution with larger subsample
+SEED = 42   
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 # qml.disable_warnings()
 
-# Dataset paths - UPDATE THESE PATHS TO MATCH YOUR DIRECTORY
-DATA_DIR = r"C:\Users\Admin\.spyder-py3\QvC-3_docs"  # Update this path
+# Dataset paths 
+DATA_DIR = r"C:\Users\Admin\.spyder-py3\QvC-3_docs"  
 TRAIN_PATH = os.path.join(DATA_DIR, "train.csv")
 VAL_PATH   = os.path.join(DATA_DIR, "val.csv")
 TEST_PATH  = os.path.join(DATA_DIR, "test.csv")
 
-#___________________________________________________________________
+
 #      PROGRESS SHOWCASE FUNCTION 
-#__________________________________________________________________
+
 
 def kernel_matrix_with_progress(X, kernel_fn, Y=None, desc="Kernel"):
     """Wrapper around PennyLane kernel_matrix with tqdm progress bar."""
@@ -51,11 +51,11 @@ def kernel_matrix_with_progress(X, kernel_fn, Y=None, desc="Kernel"):
 
     return K
 
-# ------------------------------------------------------------------
-# 1. Load GoEmotions from local dataset & BERT encoder
-# ------------------------------------------------------------------
 
-# Define emotion labels (28 emotions from GoEmotions)
+#  Load GoEmotions from local dataset & BERT encoder
+
+
+# Define emotion labels 
 all_labels = [
     'admiration','amusement','anger','annoyance','approval','caring',
     'confusion','curiosity','desire','disappointment','disapproval','disgust',
@@ -82,7 +82,7 @@ def labels_to_multi_hot(labels_list):
     vec = np.array(labels_list, dtype=np.float32)
     return vec
 
-# Load the prepared datasets
+#         Load prepared datasets
 print("Loading prepared datasets...")
 try:
     df_train = pd.read_csv(TRAIN_PATH)
@@ -94,7 +94,7 @@ try:
     df_val["labels"]   = df_val["labels"].apply(parse_labels)
     df_test["labels"]  = df_test["labels"].apply(parse_labels)
     
-    # Convert to multi-hot format
+    # Converting to multi-hot format
     df_train["multi_hot"] = df_train["labels"].apply(labels_to_multi_hot)
     df_val["multi_hot"]   = df_val["labels"].apply(labels_to_multi_hot)
     df_test["multi_hot"]  = df_test["labels"].apply(labels_to_multi_hot)
@@ -127,9 +127,9 @@ def bert_embed(texts, batch_size=512):
         embs.append(bert(**enc).last_hidden_state[:, 0, :].cpu())
     return torch.cat(embs).numpy()
 
-# ------------------------------------------------------------------
-# 2. Cache BERT embeddings (once)
-# ------------------------------------------------------------------
+
+#      Cache BERT embeddings (once)
+
 EMB_PATH = "qksvm_bert_embeddings_local.npz"
 if not os.path.exists(EMB_PATH):
     print("Pre-computing BERT embeddings (one-off)...")
@@ -137,7 +137,7 @@ if not os.path.exists(EMB_PATH):
     X_val   = bert_embed(df_val["text"])
     X_test  = bert_embed(df_test["text"])
     
-    # Convert multi_hot to numpy arrays
+    # Converting multi_hot to numpy arrays
     y_train = np.stack(df_train["multi_hot"].values)
     y_val   = np.stack(df_val["multi_hot"].values)
     y_test  = np.stack(df_test["multi_hot"].values)
@@ -159,9 +159,9 @@ print(f"Loaded embeddings: X_train {X_train.shape}, y_train {y_train.shape}")
 print(f"                   X_val {X_val.shape}, y_val {y_val.shape}")
 print(f"                   X_test {X_test.shape}, y_test {y_test.shape}")
 
-# ------------------------------------------------------------------
-# 3–7. Single seed: sub-sample + train + evaluate
-# ------------------------------------------------------------------
+
+#  Single seed: sub-sample + train + evaluate
+
 SUBSAMPLE = 20_000
 print(f"\n Will sub-sample {SUBSAMPLE} training examples")
 
@@ -220,7 +220,7 @@ class QuantumKernel:
 # Results storage
 results = {}
 
-# Single seed execution
+
 print(f"\n{'='*60}")
 print(f" Running with SEED={SEED}")
 print(f"{'='*60}")
@@ -236,9 +236,9 @@ SUB_TAG = hashlib.sha1(sub_idx.tobytes()).hexdigest()[:8]
 X_sub, y_sub = X_train[sub_idx], y_train[sub_idx]
 print(f" Sub-sampled {len(X_sub)} examples (tag: {SUB_TAG})")
 
-# ------------------------------------------------------------------
-# 5. Grid-search over n_qubits and SVM-C
-# ------------------------------------------------------------------
+
+#     Grid-search over n_qubits and SVM-C
+
 N_QUBITS_CAND = [4, 8, 10, 12, 14]
 C_CAND = [0.01, 0.1, 1, 10, 100]
 
@@ -278,15 +278,15 @@ for n_qubits in N_QUBITS_CAND:
         best_cfg   = {"n_qubits": n_qubits, "C": grid.best_params_["estimator__C"],
                       "model": grid.best_estimator_, "qk": qk}
 
-# Safety check: ensure best_cfg was set
+#      ensure best_cfg was set
 if best_cfg is None:
     raise RuntimeError(f"No best_cfg found for SEED={SEED} — something went wrong in GridSearch.")
 
 print(f"\n Best validation: {best_cfg['n_qubits']} qubits, C = {best_cfg['C']}, Macro-F1 = {best_macro:.4f}")
 
-# ------------------------------------------------------------------
-# 6. Retrain on full sub-sample & evaluate on test
-# ------------------------------------------------------------------
+
+#         Retrain on full sub-sample & evaluate on test
+
 print(f"\n Final training and testing...")
 qk   = best_cfg["qk"]
 K_train = qk.square_matrix(X_sub)
@@ -296,14 +296,14 @@ clf.fit(K_train, y_sub)
 K_test = qk.rectangular_matrix(X_test, X_sub)
 y_pred = clf.predict(K_test)
 
-# ------------------------------------------------------------------
-# 7. Report & save artefacts
-# ------------------------------------------------------------------
+
+#      Report & save artefacts
+
 macro_f1 = f1_score(y_test, y_pred, average="macro", zero_division=0)
 micro_f1 = f1_score(y_test, y_pred, average="micro", zero_division=0)
 per_label = f1_score(y_test, y_pred, average=None, zero_division=0)
 
-print(f"\n === FINAL RESULTS ===")
+print(f"\n ***** FINAL RESULTS ************")
 print(f"Test Macro-F1: {macro_f1:.4f}")
 print(f"Test Micro-F1: {micro_f1:.4f}")
 print(f"Val Macro-F1:  {best_macro:.4f}")
@@ -356,9 +356,9 @@ with open(results_path, "w") as f:
 
 print(f" Saved {model_path} & {results_path}")
 
-# ------------------------------------------------------------------
-# 8. Final summary and comprehensive results
-# ------------------------------------------------------------------
+
+#      Final summary and comprehensive results
+
 print(f"\n{'='*60}")
 print(f" EXPERIMENT COMPLETED")
 print(f"{'='*60}")
@@ -409,4 +409,5 @@ with open(summary_path, "w") as f:
 print(f"\n Comprehensive results saved to: {summary_path}")
 print(f" Experiment completed successfully with {len(df_train):,} training samples available!")
 print(f" Final test performance: {results['test_macro_f1']:.4f}")
+
 print(f" Used {SUBSAMPLE:,} training samples for optimal performance/speed trade-off")
